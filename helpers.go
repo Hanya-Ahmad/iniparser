@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"fmt"
+	"os"
 	"strings"
 )
 
@@ -29,12 +31,24 @@ func getSectionNames(str string) []string {
 	}
 	return sectionNames
 }
+func iniToString(iniData map[string]map[string]string) string {
+	var b strings.Builder
+
+	for sectionName, section := range iniData {
+		b.WriteString("[" + sectionName + "]\n")
+		for key, val := range section {
+			b.WriteString(key + "=" + val + "\n")
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
 
 // this function is called in both implementations of INIFile's and INIString's GetSections
-func getSections(str string) map[string]map[string]string {
+func getSections(scanner *bufio.Scanner) map[string]map[string]string {
 	sections := make(map[string]map[string]string)
 	currentSection := ""
-	scanner := bufio.NewScanner(strings.NewReader(str))
 	for scanner.Scan() {
 		line := scanner.Text()
 		line = strings.Replace(line, " ", "", -1)
@@ -58,3 +72,64 @@ func getSections(str string) map[string]map[string]string {
 	return sections
 }
 
+func get(sections map[string]map[string]string, sectionName string, key any) string {
+	// sections := s.GetSections(s.ToString())
+	if section, ok := sections[sectionName]; ok {
+		if value, ok := section[fmt.Sprintf("%v", key)]; ok {
+			return value
+		} else {
+			return "Key not found"
+		}
+	} else {
+		return "Section Not found"
+	}
+}
+func set(sections map[string]map[string]string, sectionName string, key any, val any) map[string]map[string]string {
+	if sections == nil {
+		sections = make(map[string]map[string]string)
+	}
+	if section, ok := sections[sectionName]; ok {
+		if _, ok := section[fmt.Sprintf("%v", key)]; ok {
+			section[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
+		} else {
+			// initiate a new key-value pair in sectionName
+			section[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
+			return sections
+		}
+	} else {
+		// initiate a new section and key-value pair
+		sections[sectionName] = make(map[string]string)
+		sections[sectionName][fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
+		return sections
+	}
+	return sections
+}
+
+func createFile(path, data string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.WriteString(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func testInput(p INIParser, getSection string, getKey any, setSection string, setKey any, setValue any) {
+	fmt.Println(p.ToString())
+	sectionNames := p.GetSectionNames(p.ToString())
+	fmt.Println("Section Names:", sectionNames)
+	sections := p.GetSections()
+	fmt.Println("Sections:", sections)
+	val := p.Get(getSection, getKey)
+	fmt.Println("Value: ", val)
+	p.Set(setSection, setKey, setValue)
+	updatedSection := p.GetSections()
+	fmt.Println("Updated Section: ", updatedSection)
+	p.Set(setSection,123,456)
+	p.SaveToFile("./iniFiles/test.ini")
+
+
+}

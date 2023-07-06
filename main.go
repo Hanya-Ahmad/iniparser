@@ -4,51 +4,38 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	// "strings"
+	"strings"
 )
 
 type INIParser interface {
 	GetSectionNames(string) []string
-	GetSections(string) map[string]map[string]string
+	GetSections() map[string]map[string]string
 	Get(section_name string, key any) string
-	Set(section_name string, key any, value any) map[string]map[string]string
+	Set(section_name string, key any, value any)
 	ToString() string
-	// SaveToFile(string) error
+	SaveToFile(string) error
 }
 
 type INIFile struct {
-	path string
+	path    string
+	iniData map[string]map[string]string
 }
 
 type INIString struct {
-	data string
+	inputData string
+	iniData   map[string]map[string]string
 }
 
-func LoadFromFile(ini INIParser) {
+func LoadFromFile(path string) *INIFile {
 	fmt.Println("load from file function started")
-	s := ini.ToString()
-	sectionNames := ini.GetSectionNames(s)
-	fmt.Println("Section Names:", sectionNames)
-	sections := ini.GetSections(s)
-	fmt.Println("Sections:", sections)
-	val := ini.Get("Database", 322)
-	fmt.Println("Value: ", val)
-	updatedSection := ini.Set("Email", "hanya", "hanya@mail.com")
-	fmt.Println("Updated Section: ", updatedSection)
+	f := INIFile{path: path}
+	return &f
 }
 
-func LoadFromString(ini INIParser) {
+func LoadFromString(data string) *INIString {
 	fmt.Println("load from string function started")
-	s := ini.ToString()
-	sectionNames := ini.GetSectionNames(s)
-	fmt.Println("Section Names:", sectionNames)
-	sections := ini.GetSections(s)
-	fmt.Println("Sections:", sections)
-	val := ini.Get("Person", "name")
-	fmt.Println("Value: ", val)
-	updatedSection := ini.Set("Person", "email", "john@mail.com")
-	fmt.Println("Updated Section: ", updatedSection)
-
+	s := INIString{inputData: data}
+	return &s
 }
 
 func (f INIFile) GetSectionNames(str string) []string {
@@ -58,11 +45,27 @@ func (f INIFile) GetSectionNames(str string) []string {
 func (s INIString) GetSectionNames(str string) []string {
 	return getSectionNames(str)
 }
-func (f INIFile) GetSections(str string) map[string]map[string]string {
-	return getSections(str)
+func (f *INIFile) GetSections() map[string]map[string]string {
+	if f.iniData != nil {
+		return f.iniData
+	} else {
+		file, err := os.Open(f.path)
+		check(err)
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		sections := getSections(scanner)
+		return sections
+	}
 }
-func (f INIString) GetSections(str string) map[string]map[string]string {
-	return getSections(str)
+
+func (s *INIString) GetSections() map[string]map[string]string {
+	if s.iniData != nil {
+		return s.iniData
+	} else {
+		scanner := bufio.NewScanner(strings.NewReader(s.inputData))
+		sections := getSections(scanner)
+		return sections
+	}
 }
 func (f INIFile) ToString() string {
 	file, err := os.Open(f.path)
@@ -79,63 +82,68 @@ func (f INIFile) ToString() string {
 }
 
 func (s INIString) ToString() string {
-	return s.data
+	if s.iniData != nil {
+		return iniToString(s.iniData)
+	} else {
+		scanner := bufio.NewScanner(strings.NewReader(s.inputData))
+		var contents string
+		for scanner.Scan() {
+			line := scanner.Text()
+			line = strings.Replace(line, " ", "", -1)
+			contents += line + "\n"
+		}
+		return contents
+	}
 }
 
 func (f INIFile) Get(sectionName string, key any) string {
-	sections := f.GetSections(f.ToString())
-	if section, ok := sections[sectionName]; ok {
-		if value, ok := section[fmt.Sprintf("%v", key)]; ok {
-			return value
-		} else {
-			return "Key not found"
-		}
-	} else {
-		return "Section not found"
-	}
+	sections := f.GetSections()
+	return get(sections, sectionName, key)
+
 }
 
 func (s INIString) Get(sectionName string, key any) string {
-	sections := s.GetSections(s.ToString())
-	if section, ok := sections[sectionName]; ok {
-		if value, ok := section[fmt.Sprintf("%v", key)]; ok {
-			return value
-		} else {
-			return "Key not found"
-		}
-	} else {
-		return "Section Not found"
-	}
+	sections := s.GetSections()
+	return get(sections, sectionName, key)
 
 }
-func (f INIFile) Set(sectionName string, key any, val any) map[string]map[string]string {
-	sections := f.GetSections(f.ToString())
-	if section, ok := sections[sectionName]; ok {
-		section[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-	} else {
-		sections[sectionName] = make(map[string]string)
-		sections[sectionName][fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-	}
-	return map[string]map[string]string{sectionName: sections[sectionName]}
+func (f *INIFile) Set(sectionName string, key any, val any) {
+	sections := f.GetSections()
+	updatedSections := set(sections, sectionName, key, val)
+	f.iniData = updatedSections
 }
 
-func (s INIString) Set(sectionName string, key any, val any) map[string]map[string]string {
-	sections := s.GetSections(s.ToString())
-	if section, ok := sections[sectionName]; ok {
-		section[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-	} else {
-		sections[sectionName] = make(map[string]string)
-		sections[sectionName][fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-	}
-	return map[string]map[string]string{sectionName: sections[sectionName]}
+func (s *INIString) Set(sectionName string, key any, val any) {
+	sections := s.GetSections()
+	updatedSections := set(sections, sectionName, key, val)
+	s.iniData = updatedSections
 
 }
+func (f INIFile) SaveToFile(path string) error {
+	var data string
+	if f.iniData != nil {
+		data = iniToString(f.iniData)
+	} else {
+		data = f.ToString()
+	}
 
+	return createFile(path, data)
+}
+
+func (s INIString) SaveToFile(path string) error {
+	var data string
+	if s.iniData != nil {
+		data = iniToString(s.iniData)
+	} else {
+		data = s.inputData
+	}
+	return createFile(path, data)
+}
 func main() {
 	path := "./iniFiles/test.ini"
-	f := INIFile{path: path}
-	s := INIString{data: "[Person] \n name = John Doe \n  age = \n phone = 123 \n [Pet] \n type = cat \n age = 3 \n [Numbers] \n 123 = onetwothree "}
-	LoadFromFile(f)
-	LoadFromString(s)
+	f := LoadFromFile(path)
+	testInput(f, "Database", "port", "Email", "hanya", "hanya@mail.com")
+	// str := LoadFromString("[Person] \n name = John Doe \n  age = \n phone = 123 \n [Pet] \n type = cat \n age = 3 \n [Numbers] \n 123 = onetwothree ")
+	// testInput(str, "Person", "name", "Person", "email", "john@mail.com")
 
 }
