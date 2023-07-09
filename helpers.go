@@ -7,10 +7,12 @@ import (
 	"os"
 	"strings"
 )
-func checkErrors(err error){
+
+func checkErrors(err error) error {
 	if err != nil {
-		fmt.Println(err)
+		return errors.New(err.Error())
 	}
+	return nil
 }
 func checkSyntax(scanner *bufio.Scanner) error {
 	sectionMap := make(map[string]bool)
@@ -34,18 +36,18 @@ func checkSyntax(scanner *bufio.Scanner) error {
 		} else if strings.Contains(line, "=") {
 			keyValPair := strings.Split(line, "=")
 			if len(keyValPair) == 2 && keyValPair[1] == "" {
-				return errors.New("error: empty key at line: " + line)
+				return errors.New("error: empty key at key: " + keyValPair[0])
 			}
 			key := strings.TrimSpace(keyValPair[0])
 			if currentSection == "" || keyMap[currentSection] == nil {
 				continue
 			}
 			if keyMap[currentSection][key] {
-				return errors.New("error: repeated key name: " + key + " in section: " + currentSection+", the last assigned value is returned")
+				return errors.New("error: repeated key name: " + key + " in section: " + currentSection + ", the last assigned value is applied")
 			}
 			keyMap[currentSection][key] = true
 		} else if !(strings.HasPrefix(line, "[") || strings.HasSuffix(line, "]")) && (!strings.Contains(line, "=")) {
-			return errors.New("error: missing key-value operator '=' at line: " + line)
+			return errors.New("error: missing key-value operator '=' at key: " + line)
 		}
 	}
 	return nil
@@ -130,7 +132,7 @@ func get(sections map[string]map[string]string, sectionName string, key any) (st
 		return "", errors.New("section " + sectionName + " not found")
 	}
 }
-func set(sections map[string]map[string]string, sectionName string, key any, val any) (map[string]map[string]string,error) {
+func set(sections map[string]map[string]string, sectionName string, key any, val any) map[string]map[string]string {
 	if sections == nil {
 		sections = make(map[string]map[string]string)
 	}
@@ -140,15 +142,17 @@ func set(sections map[string]map[string]string, sectionName string, key any, val
 		} else {
 			// initiate a new key-value pair in sectionName
 			section[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-			return sections,errors.New("warning: key "+fmt.Sprintf("%v",key)+" not found in section "+sectionName+" but has been created")
+			fmt.Println("warning: key " + fmt.Sprintf("%v", key) + " not found in section " + sectionName + " but has been created")
+			return sections
 		}
 	} else {
 		// initiate a new section and key-value pair
 		sections[sectionName] = make(map[string]string)
 		sections[sectionName][fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-		return sections,errors.New("warning: section "+sectionName+" not found but has been created")
+		fmt.Println("warning: section " + sectionName + " not found but has been created")
+		return sections
 	}
-	return sections,nil
+	return sections
 }
 
 func createFile(path, data string) error {
@@ -166,15 +170,15 @@ func createFile(path, data string) error {
 func testInput(p INIParser, getSection string, getKey any, setSection string, setKey any, setValue any, path string) {
 	strParsed, _ := p.ToString()
 	fmt.Println(strParsed)
-	sectionNames, err := p.GetSectionNames(strParsed)
+	sectionNames, err := p.GetSectionNames()
 	checkErrors(err)
 	fmt.Println("Section Names:", sectionNames)
-	sections := p.GetSections()
+	sections, _ := p.GetSections()
 	fmt.Println("Sections:", sections)
-	val := p.Get(getSection, getKey)
+	val, _ := p.Get(getSection, getKey)
 	fmt.Println("Value: ", val)
 	p.Set(setSection, setKey, setValue)
-	updatedSection := p.GetSections()
+	updatedSection, _ := p.GetSections()
 	fmt.Println("Updated Section: ", updatedSection)
 	// p.Set(setSection, 123, 456)
 	p.SaveToFile(path)

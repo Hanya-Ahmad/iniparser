@@ -3,16 +3,15 @@ package main
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 )
 
 type INIParser interface {
-	GetSectionNames(string) ([]string, error)
-	GetSections() map[string]map[string]string
-	Get(section_name string, key any) string
-	Set(section_name string, key any, value any)
+	GetSectionNames() ([]string, error)
+	GetSections() (map[string]map[string]string, error)
+	Get(section_name string, key any) (string, error)
+	Set(section_name string, key any, value any) error
 	ToString() (string, error)
 	SaveToFile(string) error
 }
@@ -28,10 +27,11 @@ type INIString struct {
 }
 
 func LoadFromFile(path string) (*INIFile, error) {
-	fmt.Println("load from file function started")
 	f := INIFile{path: path}
-	file, _ := os.Open(f.path)
-	// check(err)
+	file, err := os.Open(f.path)
+	if err != nil {
+		return nil, err
+	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	if err := checkSyntax(scanner); err != nil {
@@ -41,7 +41,6 @@ func LoadFromFile(path string) (*INIFile, error) {
 }
 
 func LoadFromString(data string) (*INIString, error) {
-	fmt.Println("load from string function started")
 	s := INIString{inputData: data}
 	scanner := bufio.NewScanner(strings.NewReader(s.inputData))
 	if err := checkSyntax(scanner); err != nil {
@@ -50,36 +49,46 @@ func LoadFromString(data string) (*INIString, error) {
 	return &s, nil
 }
 
-func (f INIFile) GetSectionNames(str string) ([]string, error) {
+func (f INIFile) GetSectionNames() ([]string, error) {
+	str, _ := f.ToString()
+
 	return getSectionNames(str)
 }
 
-func (s INIString) GetSectionNames(str string) ([]string, error) {
+func (s INIString) GetSectionNames() ([]string, error) {
+	str, _ := s.ToString()
 	return getSectionNames(str)
 }
-func (f *INIFile) GetSections() map[string]map[string]string {
+func (f *INIFile) GetSections() (map[string]map[string]string, error) {
 	if f.iniData != nil {
-		return f.iniData
+		return f.iniData, nil
 	} else {
-		file, _ := os.Open(f.path)
-		// check(err)
+		file, err := os.Open(f.path)
+		if (err) != nil {
+			return nil, (err)
+		}
+
 		defer file.Close()
 		scanner := bufio.NewScanner(file)
 		sections, err := getSections(scanner)
-		checkErrors(err)
-		return sections
+		if (err) != nil {
+			return nil, (err)
+		}
+		return sections, nil
 	}
 }
 
-func (s *INIString) GetSections() map[string]map[string]string {
+func (s *INIString) GetSections() (map[string]map[string]string, error) {
 	if s.iniData != nil {
-		return s.iniData
+		return s.iniData, nil
 	} else {
 		scanner := bufio.NewScanner(strings.NewReader(s.inputData))
 		sections, err := getSections(scanner)
-		checkErrors(err)
+		if (err) != nil {
+			return nil, (err)
+		}
 
-		return sections
+		return sections, nil
 	}
 }
 func (f INIFile) ToString() (string, error) {
@@ -115,37 +124,56 @@ func (s INIString) ToString() (string, error) {
 	}
 }
 
-func (f INIFile) Get(sectionName string, key any) string {
-	sections := f.GetSections()
+func (f INIFile) Get(sectionName string, key any) (string, error) {
+	sections, err := f.GetSections()
+	if (err) != nil {
+		return "", (err)
+	}
 	val, err := get(sections, sectionName, key)
-	checkErrors(err)
+	if (err) != nil {
+		return "", (err)
+	}
 
-	return val
+	return val, nil
 
 }
 
-func (s INIString) Get(sectionName string, key any) string {
-	sections := s.GetSections()
+func (s INIString) Get(sectionName string, key any) (string, error) {
+	sections, err := s.GetSections()
+	if (err) != nil {
+		return "", (err)
+	}
 	val, err := get(sections, sectionName, key)
-	checkErrors(err)
-
-	return val
+	if (err) != nil {
+		return "", (err)
+	}
+	return val, nil
 
 }
-func (f *INIFile) Set(sectionName string, key any, val any) {
-	sections := f.GetSections()
-	updatedSections, err := set(sections, sectionName, key, val)
-	checkErrors(err)
+func (f *INIFile) Set(sectionName string, key any, val any) error {
+
+	sections, err := f.GetSections()
+	if (err) != nil {
+		return (err)
+	}
+	updatedSections := set(sections, sectionName, key, val)
+	if (err) != nil {
+		return (err)
+	}
 
 	f.iniData = updatedSections
+	return nil
 }
 
-func (s *INIString) Set(sectionName string, key any, val any) {
-	sections := s.GetSections()
-	updatedSections, err := set(sections, sectionName, key, val)
-	checkErrors(err)
+func (s *INIString) Set(sectionName string, key any, val any) error {
+	sections, err := s.GetSections()
+	if (err) != nil {
+		return (err)
+	}
+	updatedSections := set(sections, sectionName, key, val)
 
 	s.iniData = updatedSections
+	return nil
 
 }
 func (f INIFile) SaveToFile(path string) error {
@@ -155,7 +183,9 @@ func (f INIFile) SaveToFile(path string) error {
 		data = iniToString(f.iniData)
 	} else {
 		data, err = f.ToString()
-		checkErrors(err)
+		if (err) != nil {
+			return err
+		}
 
 	}
 
@@ -172,15 +202,15 @@ func (s INIString) SaveToFile(path string) error {
 	return createFile(path, data)
 }
 func main() {
-	path := "./iniFiles/test.ini"
+	path := "./iniFiles/correctFile.ini"
 
 	f, err := LoadFromFile(path)
 	checkErrors(err)
 
-	testInput(f, "Database", "port", "Email", "hanya", "hanya@mail.com","./iniFiles/file.ini")
+	testInput(f, "Database", "port", "Email", "hanya", "hanya@mail.com", "./iniFiles/file.ini")
 	str, err := LoadFromString("[Person] \n  age= 1\n phone = 123 \n ] \n type = cat \n age = 3 \n  \n 123 = onetwothree \n email=tst")
 	checkErrors(err)
 
-	testInput(str, "Person", "age", "Person", "email", "john@mail.com","./iniFiles/string.ini")
+	testInput(str, "Person", "age", "Person", "email", "john@mail.com", "./iniFiles/string.ini")
 
 }
