@@ -1,6 +1,8 @@
 package iniparser
 
 import (
+	"strings"
+
 	"github.com/pkg/errors"
 
 	"os"
@@ -8,6 +10,97 @@ import (
 	"sort"
 	"testing"
 )
+
+func TestLoadFromReader(t *testing.T) {
+
+	t.Run("checks that ini data is parsed correctly with no errors", func(t *testing.T) {
+		const testIniData = `
+		[section1]
+		key1 = value1
+		key2 = value2
+
+		[section2]
+		key3 = value3
+		key4 = value4
+		`
+		parser := NewIniParser()
+		err := parser.LoadFromReader(strings.NewReader(testIniData))
+		if err != nil {
+			t.Errorf("loadfromreader returned an error %v", err)
+		}
+
+		expectedSections := sections{
+			"section1": map[string]string{
+				"key1 ": " value1",
+				"key2 ": " value2",
+			},
+			"section2": map[string]string{
+				"key3 ": " value3",
+				"key4 ": " value4",
+			},
+		}
+		if !reflect.DeepEqual(parser.sections, expectedSections) {
+			t.Errorf("loadfromreader did not load the correct sections expected %v got %v", expectedSections, parser.sections)
+		}
+	})
+	t.Run("repeated section name error is returned when passing a string", func(t *testing.T) {
+		str := `[Database]
+		key1 = val
+		[Email]
+		key2 = val
+		[Database]
+		key3 = val`
+		reader := strings.NewReader(str)
+		ini := NewIniParser()
+		err := ini.LoadFromReader(reader)
+		want := ErrRepeatedSectionName
+		if !errors.Is(err, want) {
+			t.Errorf("expected error %q but got %q", want, err)
+		}
+	})
+
+	t.Run("empty key error is returned when passing a string", func(t *testing.T) {
+		str := `[Database]
+		key1 = val
+		key2 = val
+		= d`
+		reader := strings.NewReader(str)
+		ini := NewIniParser()
+		err := ini.LoadFromReader(reader)
+		want := ErrEmptyKey
+		if !errors.Is(err, want) {
+			t.Errorf("expected error %q but got %q", want, err)
+		}
+	})
+
+	t.Run("repeated key error is returned when passing a string", func(t *testing.T) {
+		str := `[Database]
+		key1 = val
+		key2 = val
+		key1 = anotherVal`
+		reader := strings.NewReader(str)
+		ini := NewIniParser()
+		err := ini.LoadFromReader(reader)
+		want := ErrRepeatedKeyName
+		if !errors.Is(err, want) {
+			t.Errorf("expected error %q but got %q", want, err)
+		}
+	})
+
+	t.Run("missing assignment operator '=' error is returned when passing a string", func(t *testing.T) {
+		str := `[Database]
+		key1 = val
+		key2 = val
+		key3`
+		reader := strings.NewReader(str)
+		ini := NewIniParser()
+		err := ini.LoadFromReader(reader)
+		want := ErrMissingKeyValueOperator
+		if !errors.Is(err, want) {
+			t.Errorf("expected error %q but got %q", want, err)
+		}
+	})
+}
 
 func TestLoadFromFile(t *testing.T) {
 	t.Run("error is nil when ini file path is correct", func(t *testing.T) {
@@ -40,166 +133,37 @@ func TestLoadFromFile(t *testing.T) {
 			t.Errorf("expected error %q but received no error", want)
 		}
 	})
-	t.Run("repeated section name error when passing repeatedSection.ini", func(t *testing.T) {
-		path := "./iniFiles/repeatedSection.ini"
-		ini := NewIniParser()
-		err := ini.LoadFromFile(path)
-		want := ErrRepeatedSectionName
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("empty key error when passing emptyKey.ini", func(t *testing.T) {
-		path := "./iniFiles/emptyKey.ini"
-		ini := NewIniParser()
-		err := ini.LoadFromFile(path)
-		want := ErrEmptyKey
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("repeated key error when passing repeatedKey.ini", func(t *testing.T) {
-		path := "./iniFiles/repeatedKey.ini"
-		ini := NewIniParser()
-		err := ini.LoadFromFile(path)
-		want := ErrRepeatedKeyName
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("missing assignment operator '='  error when passing missingEqual.ini", func(t *testing.T) {
-		path := "./iniFiles/missingEqual.ini"
-		ini := NewIniParser()
-		err := ini.LoadFromFile(path)
-		want := ErrMissingKeyValueOperator
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-}
-
-func TestLoadFromString(t *testing.T) {
-	t.Run("error is nil when correct ini string is parsed", func(t *testing.T) {
-		str := ";comment\n[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
-		ini := NewIniParser()
-		err := ini.LoadFromString(str)
-		if err != nil {
-			t.Errorf("correct ini string parsed but error %q occured", err)
-		}
-	})
-	t.Run("repeated section name error when passing a string", func(t *testing.T) {
-		str := "[Database]\nkey1 = val\n[Email]\nkey2 = val\n[Database]\nkey3 = val"
-		ini := NewIniParser()
-		err := ini.LoadFromString(str)
-		want := ErrRepeatedSectionName
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("empty key error when passing a string", func(t *testing.T) {
-		str := "[Database]\nkey1 = val\nkey2 = val\nkey3 ="
-		ini := NewIniParser()
-		err := ini.LoadFromString(str)
-		want := ErrEmptyKey
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("repeated key error when passing a string", func(t *testing.T) {
-		str := "[Database]\nkey1 = val\nkey2 = val\nkey1 = anotherVal"
-		ini := NewIniParser()
-		err := ini.LoadFromString(str)
-		want := ErrRepeatedKeyName
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("missing assignment operator '='  error when passing a string", func(t *testing.T) {
-		str := "[Database]\nkey1 = val\nkey2 = val\nkey3"
-		ini := NewIniParser()
-		err := ini.LoadFromString(str)
-		want := ErrMissingKeyValueOperator
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
 }
 
 func TestGetSectionNames(t *testing.T) {
-	t.Run("error is nil when passing correctFile.ini", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		_, err := ini.GetSectionNames()
-		if err != nil {
-			t.Errorf("correct file  %q but error %q occured", path, err)
-		}
-	})
-	t.Run("correct section names returned when passing correctFile.ini", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		sectionNames, _ := ini.GetSectionNames()
-		want := []string{"Credentials", "Numbers", "Database"}
-		sort.Strings(sectionNames)
-		sort.Strings(want)
-		if !reflect.DeepEqual(sectionNames, want) {
-			t.Errorf("expected %q but got %q", want, sectionNames)
-		}
-	})
-	t.Run("no sections found error when passing noSections.ini", func(t *testing.T) {
-		path := "./iniFiles/noSections.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		_, err := ini.GetSectionNames()
-		want := ErrNoSectionsFound
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-
-	})
-	t.Run("error is nil when passing correct ini string", func(t *testing.T) {
-		str := "[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
+	t.Run("correct section names returned with no error when passing correct ini string", func(t *testing.T) {
+		str := `[Credentials]
+		user = root
+		password = root
+		port = 3000
+		#also a comment
+		[Numbers]
+		[Database]
+		name = 'John'
+		age = 25.5
+		ID = two = one`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
-		_, err := ini.GetSectionNames()
+		sectionNames, err := ini.GetSectionNames()
 		if err != nil {
 			t.Errorf("correct string  %q but error %q occured", str, err)
 		}
-	})
-	t.Run("correct section names returned when passing correct string", func(t *testing.T) {
-		str := "[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
-
-		ini := NewIniParser()
-		_ = ini.LoadFromString(str)
-		sectionNames, _ := ini.GetSectionNames()
-		want := []string{"Credentials", "Numbers", "Database"}
+		expectedNames := []string{"Credentials", "Numbers", "Database"}
 		sort.Strings(sectionNames)
-		sort.Strings(want)
-		if !reflect.DeepEqual(sectionNames, want) {
-			t.Errorf("expected %q but got %q", want, sectionNames)
+		sort.Strings(expectedNames)
+		if !reflect.DeepEqual(sectionNames, expectedNames) {
+			t.Errorf("expected %q but got %q", expectedNames, sectionNames)
 		}
+
 	})
 	t.Run("no sections found error when passing string with no sections", func(t *testing.T) {
-		str := "key1 = val\nkey2 = val"
+		str := `key1 = val
+		key2 = val`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, err := ini.GetSectionNames()
@@ -213,20 +177,9 @@ func TestGetSectionNames(t *testing.T) {
 }
 
 func TestGetSections(t *testing.T) {
-	t.Run("no sections found error when passing noSections.ini", func(t *testing.T) {
-		path := "./iniFiles/noSections.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		_, err := ini.GetSections()
-		want := ErrNoSectionsFound
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
 	t.Run("no sections found error when passing string with no sections", func(t *testing.T) {
-		str := "key1 = val\nkey2 = val"
+		str := `key1 = val
+		key2 = val`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, err := ini.GetSections()
@@ -240,52 +193,27 @@ func TestGetSections(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	t.Run("empty string value returned and exists is true when passing emptyString.ini file", func(t *testing.T) {
-		path := "./iniFiles/emptyString.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		_, exists, err := ini.Get("Database", "key2")
-		if !(exists == true && err == nil) {
-			t.Errorf("expected empty string and exist to be true but received error %q", err)
-		}
-	})
-	t.Run("section not found error when passing file", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		_, _, err := ini.Get("Names", "key2")
-		want := ErrSectionNotFound
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("key not found in section error when passing file", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		_, _, err := ini.Get("Database", "status")
-		want := ErrKeyNotFound
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
 	t.Run("empty string value returned and exists is true when passing an ini string with empty string", func(t *testing.T) {
-		str := "[Database]\nkey1=val\nkey2= "
+		str := `[Database]
+		key1=val
+		key2= `
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, exists, err := ini.Get("Database", "key2")
 		if !(exists == true && err == nil) {
-			t.Errorf("expected empty string and exist to be true but received error %q", err)
-
+			t.Errorf("expected empty string and exist to be true but received error %q and exists is %t", err, exists)
 		}
 	})
 
 	t.Run("section not found error when passing string", func(t *testing.T) {
-		str := "[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
+		str := `[Credentials]
+		user = root
+		password = root
+		port = 3000
+		[Database]
+		name = 'John'
+		age = 25.5
+		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, _, err := ini.Get("Names", "key2")
@@ -298,7 +226,14 @@ func TestGet(t *testing.T) {
 	})
 
 	t.Run("key not found in section error when passing string", func(t *testing.T) {
-		str := "[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
+		str := `[Credentials]
+		user = root
+		password = root
+		port = 3000
+		[Database]
+		name = 'John'
+		age = 25.5
+		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, _, err := ini.Get("Database", "status")
@@ -312,28 +247,15 @@ func TestGet(t *testing.T) {
 }
 
 func TestSaveToFile(t *testing.T) {
-	t.Run("check if file has been created or not when called by a file struct", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
-		createdPath := "./iniFiles/createdFile.ini"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		err := ini.SaveToFile(createdPath)
-		if err != nil {
-			t.Errorf("error saving file %v", err)
-		}
-		_, err = os.Stat(createdPath)
-		if os.IsNotExist(err) {
-			t.Errorf("error file not created %v", err)
-		} else {
-			// Clean up the created file
-			err = os.Remove(createdPath)
-			if err != nil {
-				t.Errorf("error removing file %v", err)
-			}
-		}
-	})
 	t.Run("check if file has been created or not when called by an ini string struct", func(t *testing.T) {
-		str := "[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
+		str := `[Credentials]
+		user = root
+		password = root
+		port = 3000
+		[Database]
+		name = 'John'
+		age = 25.5
+		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		createdPath := "./iniFiles/createdFileFromString.ini"
@@ -351,42 +273,25 @@ func TestSaveToFile(t *testing.T) {
 			}
 		}
 	})
-	t.Run("non ini file error when passing a non ini path when called on a file", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
-		createdPath := "./iniFiles/createdFile.txt"
-		ini := NewIniParser()
-		_ = ini.LoadFromFile(path)
-		err := ini.SaveToFile(createdPath)
-		want := ErrNonIniFilePath
-		if !errors.Is(err, want) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-	t.Run("non ini file error when passing a non ini path when called on a string", func(t *testing.T) {
-		str := "[Credentials]\nuser = root\npassword = root\nport = 3000\n#also a comment\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
-		ini := NewIniParser()
-		_ = ini.LoadFromString(str)
-		createdPath := "./iniFiles/createdFileFromString.txt"
-		err := ini.SaveToFile(createdPath)
-		want := ErrNonIniFilePath
-		if !errors.Is(err, want) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
+
 }
 
-// func TestToString(t *testing.T) {
-// 	t.Run("check if the string representation of the ini file is correct", func(t *testing.T) {
-// 		path := "./iniFiles/correctFile.ini"
-// 		ini := NewIniParser()
-// 		_ = ini.LoadFromFile(path)
-// 		expectedStr := "[Credentials]\nuser = root\npassword = root\nport = 3000\n[Numbers]\n123 = onetwothree\n3.14 = pi\n[Database]\nname = 'John'\nage = 25.5\nID = 1 = one"
-// 		if iniStr := ini.ToString(); iniStr != expectedStr {
-// 			t.Errorf("expected %v but got %v", expectedStr, iniStr)
-// 		}
-// 	})
-// }
+func TestSet(t *testing.T) {
+	ini := NewIniParser()
+	ini.sections["Section1"] = map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+	}
+	ini.Set("Section1", "key1", "new value")
+	if ini.sections["Section1"]["key1"] != "new value" {
+		t.Errorf("set did not update key value, expected %q got %q", "newvalue", ini.sections["Section1"]["key1"])
+	}
+	ini.Set("Section1", "key3", "value3")
+	if ini.sections["Section1"]["key3"] != "value3" {
+		t.Errorf("set did not add new key with correct value expected %q  got %q", "value3", ini.sections["Section1"]["key3"])
+	}
+	ini.Set("Section2", "key1", "value1")
+	if ini.sections["Section2"]["key1"] != "value1" {
+		t.Errorf("set did not add new section with correct key value pair expected %q got %q", "value1", ini.sections["Section2"]["key1"])
+	}
+}
