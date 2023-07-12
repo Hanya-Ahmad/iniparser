@@ -34,6 +34,7 @@ var (
 	ErrNonIniFilePath          = fmt.Errorf("non ini file path")
 )
 
+// Function to parse data from reader and checks for syntax errors
 func (p *IniParser) LoadFromReader(r io.Reader) error {
 	sectionMap := make(map[string]bool)
 	keyMap := make(map[string]map[string]bool)
@@ -104,7 +105,7 @@ func (p *IniParser) LoadFromString(str string) error {
 	return nil
 }
 
-// Function to get section names of ini data
+// Function to get all section names of ini data
 func (p *IniParser) GetSectionNames() ([]string, error) {
 	var sectionNames []string
 	for section := range p.sections {
