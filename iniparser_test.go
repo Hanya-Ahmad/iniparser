@@ -1,14 +1,14 @@
 package iniparser
 
 import (
-	"strings"
-
-	"github.com/pkg/errors"
-
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
+
+	"github.com/pkg/errors"
 )
 
 func TestLoadFromReader(t *testing.T) {
@@ -24,12 +24,12 @@ func TestLoadFromReader(t *testing.T) {
 		key4 = value4
 		`
 		parser := NewIniParser()
-		err := parser.LoadFromReader(strings.NewReader(testIniData))
+		err := parser.loadFromReader(strings.NewReader(testIniData))
 		if err != nil {
 			t.Errorf("loadfromreader returned an error %v", err)
 		}
 
-		expectedSections := sections{
+		expectedSections := inidata{
 			"section1": map[string]string{
 				"key1 ": " value1",
 				"key2 ": " value2",
@@ -39,8 +39,8 @@ func TestLoadFromReader(t *testing.T) {
 				"key4 ": " value4",
 			},
 		}
-		if !reflect.DeepEqual(parser.sections, expectedSections) {
-			t.Errorf("loadfromreader did not load the correct sections expected %v got %v", expectedSections, parser.sections)
+		if !reflect.DeepEqual(parser.data, expectedSections) {
+			t.Errorf("loadfromreader did not load the correct sections expected %v got %v", expectedSections, parser.data)
 		}
 	})
 	t.Run("repeated section name error is returned when passing a string", func(t *testing.T) {
@@ -52,8 +52,8 @@ func TestLoadFromReader(t *testing.T) {
 		key3 = val`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
-		err := ini.LoadFromReader(reader)
-		want := ErrRepeatedSectionName
+		err := ini.loadFromReader(reader)
+		want := ErrRepeatedSection
 		if !errors.Is(err, want) {
 			t.Errorf("expected error %q but got %q", want, err)
 		}
@@ -66,7 +66,7 @@ func TestLoadFromReader(t *testing.T) {
 		= d`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
-		err := ini.LoadFromReader(reader)
+		err := ini.loadFromReader(reader)
 		want := ErrEmptyKey
 		if !errors.Is(err, want) {
 			t.Errorf("expected error %q but got %q", want, err)
@@ -80,7 +80,7 @@ func TestLoadFromReader(t *testing.T) {
 		key1 = anotherVal`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
-		err := ini.LoadFromReader(reader)
+		err := ini.loadFromReader(reader)
 		want := ErrRepeatedKeyName
 		if !errors.Is(err, want) {
 			t.Errorf("expected error %q but got %q", want, err)
@@ -94,8 +94,8 @@ func TestLoadFromReader(t *testing.T) {
 		key3`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
-		err := ini.LoadFromReader(reader)
-		want := ErrMissingKeyValueOperator
+		err := ini.loadFromReader(reader)
+		want := ErrInvalidIniContent
 		if !errors.Is(err, want) {
 			t.Errorf("expected error %q but got %q", want, err)
 		}
@@ -103,10 +103,32 @@ func TestLoadFromReader(t *testing.T) {
 }
 
 func TestLoadFromFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmp")
+	if err != nil {
+		t.Errorf("failed to create temporary file")
+	}
+	defer os.RemoveAll(tempDir)
 	t.Run("error is nil when ini file path is correct", func(t *testing.T) {
-		path := "./iniFiles/correctFile.ini"
+		data :=
+			`;comment
+        [Section]
+        key1 = val1
+        key2 = val2
+        #also a comment
+        [Credentials]
+        user = root
+        password = root123
+        port = 3000
+        `
+		filePath := "example.ini"
+		path := filepath.Join(tempDir, filePath)
+		err := os.WriteFile(path, []byte(data), 0644)
+		if err != nil {
+			t.Errorf("error %v", err)
+		}
+		defer os.Remove(path)
 		ini := NewIniParser()
-		err := ini.LoadFromFile(path)
+		err = ini.LoadFromFile(path)
 		if err != nil {
 			t.Errorf("correct file path %q but error %q occured", path, err)
 		}
@@ -126,7 +148,7 @@ func TestLoadFromFile(t *testing.T) {
 		path := "./iniFiles/config.txt"
 		ini := NewIniParser()
 		err := ini.LoadFromFile(path)
-		want := ErrNonIniFileParsed
+		want := ErrInvalidExtension
 		if (!errors.Is(err, want)) && err != nil {
 			t.Errorf("expected error %q but got error %q", want, err)
 		} else if err == nil {
@@ -149,10 +171,7 @@ func TestGetSectionNames(t *testing.T) {
 		ID = two = one`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
-		sectionNames, err := ini.GetSectionNames()
-		if err != nil {
-			t.Errorf("correct string  %q but error %q occured", str, err)
-		}
+		sectionNames := ini.GetSectionNames()
 		expectedNames := []string{"Credentials", "Numbers", "Database"}
 		sort.Strings(sectionNames)
 		sort.Strings(expectedNames)
@@ -161,50 +180,9 @@ func TestGetSectionNames(t *testing.T) {
 		}
 
 	})
-	t.Run("no sections found error when passing string with no sections", func(t *testing.T) {
-		str := `key1 = val
-		key2 = val`
-		ini := NewIniParser()
-		_ = ini.LoadFromString(str)
-		_, err := ini.GetSectionNames()
-		want := ErrNoSectionsFound
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
-}
-
-func TestGetSections(t *testing.T) {
-	t.Run("no sections found error when passing string with no sections", func(t *testing.T) {
-		str := `key1 = val
-		key2 = val`
-		ini := NewIniParser()
-		_ = ini.LoadFromString(str)
-		_, err := ini.GetSections()
-		want := ErrNoSectionsFound
-		if (!errors.Is(err, want)) && err != nil {
-			t.Errorf("expected error %q but got error %q", want, err)
-		} else if err == nil {
-			t.Errorf("expected error %q but received no error", want)
-		}
-	})
 }
 
 func TestGet(t *testing.T) {
-	t.Run("empty string value returned and exists is true when passing an ini string with empty string", func(t *testing.T) {
-		str := `[Database]
-		key1=val
-		key2= `
-		ini := NewIniParser()
-		_ = ini.LoadFromString(str)
-		_, exists, err := ini.Get("Database", "key2")
-		if !(exists == true && err == nil) {
-			t.Errorf("expected empty string and exist to be true but received error %q and exists is %t", err, exists)
-		}
-	})
-
 	t.Run("section not found error when passing string", func(t *testing.T) {
 		str := `[Credentials]
 		user = root
@@ -216,7 +194,7 @@ func TestGet(t *testing.T) {
 		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
-		_, _, err := ini.Get("Names", "key2")
+		_, err := ini.Get("Names", "key2")
 		want := ErrSectionNotFound
 		if (!errors.Is(err, want)) && err != nil {
 			t.Errorf("expected error %q but got error %q", want, err)
@@ -236,7 +214,7 @@ func TestGet(t *testing.T) {
 		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
-		_, _, err := ini.Get("Database", "status")
+		_, err := ini.Get("Database", "status")
 		want := ErrKeyNotFound
 		if (!errors.Is(err, want)) && err != nil {
 			t.Errorf("expected error %q but got error %q", want, err)
@@ -247,6 +225,11 @@ func TestGet(t *testing.T) {
 }
 
 func TestSaveToFile(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tmp")
+	if err != nil {
+		t.Errorf("failed to create temporary file")
+	}
+	defer os.RemoveAll(tempDir)
 	t.Run("check if file has been created or not when called by an ini string struct", func(t *testing.T) {
 		str := `[Credentials]
 		user = root
@@ -258,18 +241,19 @@ func TestSaveToFile(t *testing.T) {
 		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
-		createdPath := "./iniFiles/createdFileFromString.ini"
-		err := ini.SaveToFile(createdPath)
+		createdPath := "createdFileFromString.ini"
+		path := filepath.Join(tempDir, createdPath)
+		err := ini.SaveToFile(path)
 		if err != nil {
-			t.Errorf("error saving file %v", err)
+			t.Errorf("failed to save file %v", err)
 		}
-		_, err = os.Stat(createdPath)
+		_, err = os.Stat(path)
 		if os.IsNotExist(err) {
-			t.Errorf("error file not created %v", err)
+			t.Errorf("failed to create file %v", err)
 		} else {
-			err = os.Remove(createdPath)
+			err = os.Remove(path)
 			if err != nil {
-				t.Errorf("error removing file %v", err)
+				t.Errorf("failed to remove file %v", err)
 			}
 		}
 	})
@@ -278,20 +262,20 @@ func TestSaveToFile(t *testing.T) {
 
 func TestSet(t *testing.T) {
 	ini := NewIniParser()
-	ini.sections["Section1"] = map[string]string{
+	ini.data["Section1"] = map[string]string{
 		"key1": "value1",
 		"key2": "value2",
 	}
 	ini.Set("Section1", "key1", "new value")
-	if ini.sections["Section1"]["key1"] != "new value" {
-		t.Errorf("set did not update key value, expected %q got %q", "newvalue", ini.sections["Section1"]["key1"])
+	if ini.data["Section1"]["key1"] != "new value" {
+		t.Errorf("set did not update key value, expected %q got %q", "newvalue", ini.data["Section1"]["key1"])
 	}
 	ini.Set("Section1", "key3", "value3")
-	if ini.sections["Section1"]["key3"] != "value3" {
-		t.Errorf("set did not add new key with correct value expected %q  got %q", "value3", ini.sections["Section1"]["key3"])
+	if ini.data["Section1"]["key3"] != "value3" {
+		t.Errorf("set did not add new key with correct value expected %q  got %q", "value3", ini.data["Section1"]["key3"])
 	}
 	ini.Set("Section2", "key1", "value1")
-	if ini.sections["Section2"]["key1"] != "value1" {
-		t.Errorf("set did not add new section with correct key value pair expected %q got %q", "value1", ini.sections["Section2"]["key1"])
+	if ini.data["Section2"]["key1"] != "value1" {
+		t.Errorf("set did not add new section with correct key value pair expected %q got %q", "value1", ini.data["Section2"]["key1"])
 	}
 }

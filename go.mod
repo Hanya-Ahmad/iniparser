@@ -1,4 +1,4 @@
-module INIParser-Hanya
+module github.com/codescalersinternships/INIParser-Hanya
 
 go 1.20
 
