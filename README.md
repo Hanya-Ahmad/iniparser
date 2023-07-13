@@ -1,4 +1,4 @@
-# INIParser-Hanya
+# INI Parser
 # Overview
 iniparser is a Go package for parsing, manipulating, and generating INI files. It provides a simple and easy-to-use interface for reading and writing INI files. 
 

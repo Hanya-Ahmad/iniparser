@@ -54,8 +54,9 @@ func (p *IniParser) loadFromReader(r io.Reader) error {
 			p.data[sectionName] = make(section)
 			continue
 		}
+
 		keyValPair := strings.Split(line, "=")
-		if len(keyValPair) == 2 {
+		if len(keyValPair) == 2 && sectionName != "" {
 			key := keyValPair[0]
 			if key == "" {
 				return fmt.Errorf("%w: in section %s", ErrEmptyKey, sectionName)
@@ -67,9 +68,9 @@ func (p *IniParser) loadFromReader(r io.Reader) error {
 			}
 			p.data[sectionName][key] = keyValPair[1]
 			continue
-		} else {
-			return fmt.Errorf("%w: at key %s in section %s", ErrInvalidIniContent, line, sectionName)
 		}
+		return fmt.Errorf("%w: at key %s in section %s", ErrInvalidIniContent, line, sectionName)
+
 	}
 	return nil
 }
@@ -122,12 +123,14 @@ func (p *IniParser) String() string {
 func (p *IniParser) Get(sectionName string, key string) (string, error) {
 	section, ok := p.data[sectionName]
 	if !ok {
+
 		return "", fmt.Errorf("%w: at section %s", ErrSectionNotFound, sectionName)
 	}
 	value, ok := section[key]
 	if !ok {
 		return "", fmt.Errorf("%w: at key %s", ErrKeyNotFound, key)
 	}
+	fmt.Println(value, "vak")
 	return value, nil
 }
 

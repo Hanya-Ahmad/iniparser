@@ -16,12 +16,12 @@ func TestLoadFromReader(t *testing.T) {
 	t.Run("checks that ini data is parsed correctly with no errors", func(t *testing.T) {
 		const testIniData = `
 		[section1]
-		key1 = value1
-		key2 = value2
+		key1=value1
+		key2=value2
 
 		[section2]
-		key3 = value3
-		key4 = value4
+		key3=value3
+		key4=value4
 		`
 		parser := NewIniParser()
 		err := parser.loadFromReader(strings.NewReader(testIniData))
@@ -31,12 +31,12 @@ func TestLoadFromReader(t *testing.T) {
 
 		expectedSections := inidata{
 			"section1": map[string]string{
-				"key1 ": " value1",
-				"key2 ": " value2",
+				"key1": "value1",
+				"key2": "value2",
 			},
 			"section2": map[string]string{
-				"key3 ": " value3",
-				"key4 ": " value4",
+				"key3": "value3",
+				"key4": "value4",
 			},
 		}
 		if !reflect.DeepEqual(parser.data, expectedSections) {
@@ -45,11 +45,11 @@ func TestLoadFromReader(t *testing.T) {
 	})
 	t.Run("repeated section name error is returned when passing a string", func(t *testing.T) {
 		str := `[Database]
-		key1 = val
+		key1=val
 		[Email]
-		key2 = val
+		key2=val
 		[Database]
-		key3 = val`
+		key3=val`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
 		err := ini.loadFromReader(reader)
@@ -61,8 +61,8 @@ func TestLoadFromReader(t *testing.T) {
 
 	t.Run("empty key error is returned when passing a string", func(t *testing.T) {
 		str := `[Database]
-		key1 = val
-		key2 = val
+		key1=val
+		key2=val
 		= d`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
@@ -75,9 +75,9 @@ func TestLoadFromReader(t *testing.T) {
 
 	t.Run("repeated key error is returned when passing a string", func(t *testing.T) {
 		str := `[Database]
-		key1 = val
-		key2 = val
-		key1 = anotherVal`
+		key1=val
+		key2=val
+		key1=anotherVal`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
 		err := ini.loadFromReader(reader)
@@ -89,8 +89,8 @@ func TestLoadFromReader(t *testing.T) {
 
 	t.Run("missing assignment operator '=' error is returned when passing a string", func(t *testing.T) {
 		str := `[Database]
-		key1 = val
-		key2 = val
+		key1=val
+		key2=val
 		key3`
 		reader := strings.NewReader(str)
 		ini := NewIniParser()
@@ -112,13 +112,13 @@ func TestLoadFromFile(t *testing.T) {
 		data :=
 			`;comment
         [Section]
-        key1 = val1
-        key2 = val2
+        key1=val1
+        key2=val2
         #also a comment
         [Credentials]
-        user = root
-        password = root123
-        port = 3000
+        user=root
+        password=root123
+        port=3000
         `
 		filePath := "example.ini"
 		path := filepath.Join(tempDir, filePath)
@@ -160,15 +160,15 @@ func TestLoadFromFile(t *testing.T) {
 func TestGetSectionNames(t *testing.T) {
 	t.Run("correct section names returned with no error when passing correct ini string", func(t *testing.T) {
 		str := `[Credentials]
-		user = root
-		password = root
-		port = 3000
+		user=root
+		password=root
+		port=3000
 		#also a comment
 		[Numbers]
 		[Database]
-		name = 'John'
-		age = 25.5
-		ID = two = one`
+		name='John'
+		age=25.5
+		ID=two=one`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		sectionNames := ini.GetSectionNames()
@@ -181,17 +181,44 @@ func TestGetSectionNames(t *testing.T) {
 
 	})
 }
+func TestGetSections(t *testing.T) {
+	// Define test data
+	testData := `
+        [section1]
+        key1=value1
+        key2=value2
+        [section2]
+        key3=value3
+        key4=value4
+    `
+	iniparser := NewIniParser()
+	_ = iniparser.LoadFromString(testData)
+	sections := iniparser.GetSections()
+	expected := inidata{
+		"section1": map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+		},
+		"section2": map[string]string{
+			"key3": "value3",
+			"key4": "value4",
+		},
+	}
+	if !reflect.DeepEqual(sections, expected) {
+		t.Errorf("got %v expected %v", sections, expected)
+	}
+}
 
 func TestGet(t *testing.T) {
+	str := `[Credentials]
+	user=root
+	password=root
+	port=3000
+	[Database]
+	name='John'
+	age=25.5
+	`
 	t.Run("section not found error when passing string", func(t *testing.T) {
-		str := `[Credentials]
-		user = root
-		password = root
-		port = 3000
-		[Database]
-		name = 'John'
-		age = 25.5
-		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, err := ini.Get("Names", "key2")
@@ -204,14 +231,6 @@ func TestGet(t *testing.T) {
 	})
 
 	t.Run("key not found in section error when passing string", func(t *testing.T) {
-		str := `[Credentials]
-		user = root
-		password = root
-		port = 3000
-		[Database]
-		name = 'John'
-		age = 25.5
-		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		_, err := ini.Get("Database", "status")
@@ -222,23 +241,32 @@ func TestGet(t *testing.T) {
 			t.Errorf("expected error %q but received no error", want)
 		}
 	})
+	t.Run("value retrieved is correct", func(t *testing.T) {
+		ini := NewIniParser()
+		_ = ini.LoadFromString(str)
+		key, err := ini.Get("Credentials", "user")
+		want := "root"
+		if !(err == nil && key == want) {
+			t.Errorf("got %s expected %s", err, want)
+		}
+	})
 }
 
 func TestSaveToFile(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "tmp")
+	str := `[Credentials]
+	user=root
+	password=root
+	port=3000
+	[Database]
+	name='John'
+	age=25.5
+	`
 	if err != nil {
 		t.Errorf("failed to create temporary file")
 	}
 	defer os.RemoveAll(tempDir)
 	t.Run("check if file has been created or not when called by an ini string struct", func(t *testing.T) {
-		str := `[Credentials]
-		user = root
-		password = root
-		port = 3000
-		[Database]
-		name = 'John'
-		age = 25.5
-		`
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
 		createdPath := "createdFileFromString.ini"
@@ -255,6 +283,17 @@ func TestSaveToFile(t *testing.T) {
 			if err != nil {
 				t.Errorf("failed to remove file %v", err)
 			}
+		}
+	})
+	t.Run("invalid extension error", func(t *testing.T) {
+		ini := NewIniParser()
+		_ = ini.LoadFromString(str)
+		createdPath := "createdFileFromString.txt"
+		path := filepath.Join(tempDir, createdPath)
+		err := ini.SaveToFile(path)
+		want := ErrInvalidExtension
+		if !errors.Is(err, want) {
+			t.Errorf("got %s expected %s", err, want)
 		}
 	})
 
