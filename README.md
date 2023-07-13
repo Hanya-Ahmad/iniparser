@@ -68,12 +68,12 @@ The following syntax errors are defined and tested in the package:
 - ErrRepeatedSectionName
 - ErrEmptyKey
 - ErrRepeatedKeyName
-- ErrMissingKeyValueOperator
-- ErrNonIniFileParsed
+- ErrInvalidIniContent
+- ErrInvalidExtension
 - ErrNoSectionsFound
 - ErrSectionNotFound
 - ErrKeyNotFound
-- ErrNonIniFilePath
+
 
 # How to Test
 The package includes unit tests for all the available methods. To run the tests, navigate to the root of the package and run the following command:
