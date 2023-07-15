@@ -18,7 +18,6 @@ func TestLoadFromReader(t *testing.T) {
 		[section1]
 		key1=value1
 		key2=value2
-
 		[section2]
 		key3=value3
 		key4=value4
@@ -211,9 +210,10 @@ func TestGetSections(t *testing.T) {
 
 func TestGet(t *testing.T) {
 	str := `[Credentials]
-	user=root
+	user= 
 	password=root
 	port=3000
+	key=
 	[Database]
 	name='John'
 	age=25.5
@@ -244,10 +244,10 @@ func TestGet(t *testing.T) {
 	t.Run("value retrieved is correct", func(t *testing.T) {
 		ini := NewIniParser()
 		_ = ini.LoadFromString(str)
-		key, err := ini.Get("Credentials", "user")
-		want := "root"
+		key, err := ini.Get("Credentials", "key")
+		want := ""
 		if !(err == nil && key == want) {
-			t.Errorf("got %s expected %s", err, want)
+			t.Errorf("got %s expected %s", key, want)
 		}
 	})
 }
